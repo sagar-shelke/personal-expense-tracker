@@ -6,13 +6,15 @@ DB_PATH = Path(__file__).resolve().parent.parent / "expense_tracker.db"
 
 
 def get_connection():
-    connection = sqlite3.connect(DB_PATH)
+    connection = sqlite3.connect(DB_PATH, timeout=30)
     connection.row_factory = sqlite3.Row
     return connection
 
 
 def initialize_database():
     with get_connection() as connection:
+        connection.execute("PRAGMA journal_mode=WAL")
+
         connection.execute("""
             CREATE TABLE IF NOT EXISTS processed_updates (
                 update_id INTEGER PRIMARY KEY,
@@ -36,6 +38,11 @@ def initialize_database():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE (telegram_user_id, telegram_message_id)
             )
+        """)
+
+        connection.execute("""
+            CREATE INDEX IF NOT EXISTS idx_transactions_status
+            ON transactions(status)
         """)
 
 
@@ -80,6 +87,19 @@ def get_pending_transaction(user_id):
         """, (user_id,)).fetchone()
 
 
+def mark_transaction_saving(user_id, message_id):
+    with get_connection() as connection:
+        cursor = connection.execute("""
+            UPDATE transactions
+            SET status = 'saving'
+            WHERE telegram_user_id = ?
+              AND telegram_message_id = ?
+              AND status IN ('pending', 'failed')
+        """, (user_id, message_id))
+
+        return cursor.rowcount == 1
+
+
 def mark_transaction_saved(user_id, message_id):
     with get_connection() as connection:
         cursor = connection.execute("""
@@ -87,10 +107,33 @@ def mark_transaction_saved(user_id, message_id):
             SET status = 'saved'
             WHERE telegram_user_id = ?
               AND telegram_message_id = ?
-              AND status = 'pending'
+              AND status IN ('pending', 'saving', 'failed')
         """, (user_id, message_id))
 
         return cursor.rowcount == 1
+
+
+def mark_transaction_failed(user_id, message_id):
+    with get_connection() as connection:
+        cursor = connection.execute("""
+            UPDATE transactions
+            SET status = 'failed'
+            WHERE telegram_user_id = ?
+              AND telegram_message_id = ?
+              AND status = 'saving'
+        """, (user_id, message_id))
+
+        return cursor.rowcount == 1
+
+
+def get_recoverable_transactions():
+    with get_connection() as connection:
+        return connection.execute("""
+            SELECT *
+            FROM transactions
+            WHERE status IN ('saving', 'failed')
+            ORDER BY id ASC
+        """).fetchall()
 
 
 def cancel_pending_transaction(user_id, message_id):

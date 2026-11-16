@@ -1,5 +1,8 @@
 
 import os
+import threading
+from functools import wraps
+
 import gspread
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
@@ -13,6 +16,19 @@ SCOPES = [
 
 TABLE_START_ROW = 2
 TABLE_END_ROW = 501
+
+# Ensure only one Google Sheets write runs at a time
+# within this Python process.
+SHEETS_WRITE_LOCK = threading.Lock()
+
+
+def serialized_write(function):
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+        with SHEETS_WRITE_LOCK:
+            return function(*args, **kwargs)
+
+    return wrapper
 
 
 def get_worksheet():
@@ -36,10 +52,14 @@ def get_worksheet():
     return spreadsheet.worksheet("Add Transactions")
 
 
+@serialized_write
 def save_transaction(transaction, transaction_id):
     """
-    Save a transaction once using its stable Telegram transaction ID.
+    Save a transaction using its stable Telegram transaction ID.
+
     Column G stores the unique transaction ID.
+
+    The write lock serializes calls within this Python process.
     """
 
     if not transaction_id:

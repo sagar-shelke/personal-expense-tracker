@@ -9,3 +9,6 @@ expense_tracker.db
 
 # Local backup files
 *.backup
+
+# Local backup files
+*.before_lock_*
