@@ -9,7 +9,7 @@ A private Telegram bot that turns short messages into rows in Google Sheets.
 - Reads amounts such as `250`, `1,00,000`, `1.5k` and `₹600`
 - Reads `today`, `yesterday`, `5 nov`, `05/11/2026` (day first) and `2026-11-05`; dates use India time
 - Avoids duplicate rows by storing a transaction ID in the sheet
-- Retries rate-limited saves; failed saves can be retried with `/retry` and are rechecked on restart
+- Retries rate-limited saves; failed saves are retried every 5 minutes, with `/retry`, and on restart
 
 ## Message examples
 
@@ -52,6 +52,8 @@ You need Python 3.10 or later.
    ```bash
    python -m app.bot
    ```
+
+To keep the bot running all the time, see [DEPLOY.md](DEPLOY.md).
 
 ## Commands
 
