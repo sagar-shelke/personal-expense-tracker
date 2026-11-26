@@ -1,4 +1,3 @@
-
 import sqlite3
 from pathlib import Path
 
@@ -14,14 +13,6 @@ def get_connection():
 def initialize_database():
     with get_connection() as connection:
         connection.execute("PRAGMA journal_mode=WAL")
-
-        connection.execute("""
-            CREATE TABLE IF NOT EXISTS processed_updates (
-                update_id INTEGER PRIMARY KEY,
-                telegram_user_id INTEGER NOT NULL,
-                processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
 
         connection.execute("""
             CREATE TABLE IF NOT EXISTS transactions (
@@ -147,25 +138,3 @@ def cancel_pending_transaction(user_id, message_id):
         """, (user_id, message_id))
 
         return cursor.rowcount == 1
-
-
-def is_update_processed(update_id):
-    with get_connection() as connection:
-        result = connection.execute("""
-            SELECT 1
-            FROM processed_updates
-            WHERE update_id = ?
-        """, (update_id,)).fetchone()
-
-        return result is not None
-
-
-def mark_update_processed(update_id, user_id):
-    with get_connection() as connection:
-        connection.execute("""
-            INSERT OR IGNORE INTO processed_updates (
-                update_id,
-                telegram_user_id
-            )
-            VALUES (?, ?)
-        """, (update_id, user_id))

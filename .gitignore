@@ -12,3 +12,7 @@ expense_tracker.db
 
 # Local backup files
 *.before_lock_*
+
+# SQLite WAL files
+expense_tracker.db-wal
+expense_tracker.db-shm

@@ -57,14 +57,18 @@ def build_transaction_id(user_id, message_id):
     return f"{user_id}-{message_id}"
 
 
-async def recover_transactions(application):
-    """Recover transactions interrupted during Google Sheets synchronization."""
+async def recover_transactions(application, rows=None):
+    """Recover transactions interrupted during Google Sheets synchronization.
 
-    recoverable = get_recoverable_transactions()
+    Returns the number of transactions recovered.
+    """
+
+    recoverable = get_recoverable_transactions() if rows is None else rows
+    recovered = 0
 
     if not recoverable:
         logger.info("No interrupted transactions found.")
-        return
+        return recovered
 
     logger.info(
         "Found %s transaction(s) requiring recovery.",
@@ -107,6 +111,8 @@ async def recover_transactions(application):
                 )
                 continue
 
+            recovered += 1
+
             logger.info(
                 "Recovered transaction %s. Sheets status: %s, row: %s",
                 transaction_id,
@@ -121,6 +127,8 @@ async def recover_transactions(application):
                 "Recovery failed for transaction %s.",
                 transaction_id,
             )
+
+    return recovered
 
 
 async def authorize(update: Update) -> bool:
@@ -141,7 +149,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.effective_message.reply_text(
-        "👋 Welcome to your 2027 Personal Expense Tracker!\n\n"
+        "👋 Welcome to your Personal Expense Tracker!\n\n"
         "Send a transaction like:\n"
         "Spent 250 on groceries using UPI\n\n"
         "I'll show you a preview before saving."
@@ -157,9 +165,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/start - Start the bot\n"
         "/help - Show help\n"
         "/status - Check bot status\n"
-        "/cancel - Cancel pending transaction\n\n"
-        "Example:\n"
-        "Spent 250 on groceries using UPI"
+        "/cancel - Cancel pending transaction\n"
+        "/retry - Retry failed saves\n\n"
+        "Examples:\n"
+        "Spent 250 on groceries using UPI\n"
+        "Spent 1.5k on shopping yesterday\n"
+        "Bought 2 movie tickets for ₹600"
     )
 
 
@@ -171,9 +182,39 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.effective_message.reply_text(
         "✅ Telegram bot is running!\n"
-        "✅ Google Sheets integration configured!\n"
+        "ℹ️ Google Sheets is checked when you save.\n"
         "✅ SQLite database initialized!\n"
         f"🔄 Transactions requiring recovery: {len(recoverable)}"
+    )
+
+
+async def retry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await authorize(update):
+        return
+
+    user_id = update.effective_user.id
+
+    # Only failed saves: a 'saving' one may still be in progress.
+    failed = [
+        row for row in get_recoverable_transactions()
+        if row["status"] == "failed" and row["telegram_user_id"] == user_id
+    ]
+
+    if not failed:
+        await update.effective_message.reply_text(
+            "There are no failed transactions to retry."
+        )
+        return
+
+    await update.effective_message.reply_text(
+        f"🔄 Retrying {len(failed)} transaction(s)..."
+    )
+
+    recovered = await recover_transactions(context.application, failed)
+
+    await update.effective_message.reply_text(
+        f"✅ Recovered: {recovered}\n"
+        f"⚠️ Not recovered: {len(failed) - recovered}"
     )
 
 
@@ -334,7 +375,8 @@ async def handle_confirmation(
             await update.effective_message.reply_text(
                 "⚠️ Could not confirm the Google Sheets write.\n"
                 "Your transaction has been marked for recovery.\n"
-                "It will be checked automatically when the bot restarts."
+                "Send /retry to try again. It is also checked "
+                "when the bot restarts."
             )
 
     elif message in ["no", "cancel"]:
@@ -387,6 +429,7 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("status", status))
     application.add_handler(CommandHandler("cancel", cancel))
+    application.add_handler(CommandHandler("retry", retry))
 
     application.add_handler(
         MessageHandler(
@@ -395,7 +438,7 @@ def main():
         )
     )
 
-    logger.info("Starting 2027 Expense Tracker Bot...")
+    logger.info("Starting Expense Tracker Bot...")
 
     application.run_polling()
 
