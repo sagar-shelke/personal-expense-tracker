@@ -22,6 +22,9 @@ TABLE_END_ROW = 501
 # Waits, in seconds, before retrying a rate-limited (HTTP 429) save.
 RETRY_DELAYS = (5, 20, 45)
 
+# Give up on a stalled Google request instead of waiting indefinitely.
+REQUEST_TIMEOUT_SECONDS = 30
+
 # Text starting with these could be read as a formula by Google Sheets.
 FORMULA_PREFIXES = ("=", "+", "-", "@")
 
@@ -57,6 +60,7 @@ def get_worksheet():
     )
 
     client = gspread.authorize(credentials)
+    client.set_timeout(REQUEST_TIMEOUT_SECONDS)
     spreadsheet = client.open_by_key(spreadsheet_id)
 
     return spreadsheet.worksheet("Add Transactions")

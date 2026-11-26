@@ -1,0 +1,19 @@
+[Unit]
+Description=Personal Expense Tracker Telegram bot
+Wants=network-online.target
+After=network-online.target
+# Keep restarting, even after a long network outage.
+StartLimitIntervalSec=0
+
+[Service]
+User=expense
+WorkingDirectory=/opt/expense-tracker
+ExecStart=/opt/expense-tracker/.venv/bin/python -m app.bot
+Restart=always
+RestartSec=10
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

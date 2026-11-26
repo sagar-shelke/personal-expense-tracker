@@ -28,6 +28,8 @@ from app.database import (
 
 load_dotenv()
 
+AUTO_RETRY_SECONDS = 300
+
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ALLOWED_USER_ID = int(os.getenv("TELEGRAM_ALLOWED_USER_ID", "0"))
 
@@ -129,6 +131,50 @@ async def recover_transactions(application, rows=None):
             )
 
     return recovered
+
+
+async def retry_failed_periodically(application):
+    """Retry failed saves while the bot keeps running."""
+
+    while True:
+        await asyncio.sleep(AUTO_RETRY_SECONDS)
+
+        try:
+            # Skip 'saving' rows: those may still be in progress.
+            failed = [
+                row for row in get_recoverable_transactions()
+                if row["status"] == "failed"
+                and row["telegram_user_id"] == ALLOWED_USER_ID
+            ]
+
+            if not failed:
+                continue
+
+            recovered = await recover_transactions(application, failed)
+
+            if recovered:
+                await application.bot.send_message(
+                    chat_id=ALLOWED_USER_ID,
+                    text=f"✅ Saved {recovered} previously failed transaction(s).",
+                )
+
+        except Exception:
+            logger.exception("Automatic retry failed.")
+
+
+async def on_startup(application):
+    await recover_transactions(application)
+
+    application.bot_data["retry_task"] = asyncio.create_task(
+        retry_failed_periodically(application)
+    )
+
+
+async def on_stop(application):
+    task = application.bot_data.pop("retry_task", None)
+
+    if task:
+        task.cancel()
 
 
 async def authorize(update: Update) -> bool:
@@ -375,8 +421,8 @@ async def handle_confirmation(
             await update.effective_message.reply_text(
                 "⚠️ Could not confirm the Google Sheets write.\n"
                 "Your transaction has been marked for recovery.\n"
-                "Send /retry to try again. It is also checked "
-                "when the bot restarts."
+                "It will be retried automatically every few minutes. "
+                "You can also send /retry."
             )
 
     elif message in ["no", "cancel"]:
@@ -421,7 +467,8 @@ def main():
     application = (
         Application.builder()
         .token(TOKEN)
-        .post_init(recover_transactions)
+        .post_init(on_startup)
+        .post_stop(on_stop)
         .build()
     )
 

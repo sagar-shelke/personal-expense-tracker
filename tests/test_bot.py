@@ -58,3 +58,22 @@ def test_retry_rejects_other_users(monkeypatch):
     monkeypatch.setattr(bot, "save_transaction", save)
     asyncio.run(bot.retry(make_update(user_id=7), MagicMock()))
     save.assert_not_called()
+
+
+def test_automatic_retry_saves_failed_and_notifies(monkeypatch):
+    add(1, failed=True)
+    add(2, failed=False)  # still 'saving'
+    save = MagicMock(return_value={"status": "saved", "row": 2})
+    monkeypatch.setattr(bot, "save_transaction", save)
+    monkeypatch.setattr(bot, "AUTO_RETRY_SECONDS", 0.01)
+    application = MagicMock(bot_data={})
+    application.bot.send_message = AsyncMock()
+
+    async def run():
+        task = asyncio.create_task(bot.retry_failed_periodically(application))
+        await asyncio.sleep(0.2)
+        task.cancel()
+
+    asyncio.run(run())
+    assert save.call_count == 1
+    application.bot.send_message.assert_awaited_once()
