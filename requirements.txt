@@ -1,4 +1,5 @@
-python-telegram-bot
-gspread
-google-auth
-python-dotenv
+python-telegram-bot==22.8
+gspread==6.2.1
+google-auth==2.63.1
+python-dotenv==1.2.4
+tzdata==2026.6
